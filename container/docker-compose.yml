@@ -1,0 +1,24 @@
+services:
+  pipeline:
+    build:
+      context: .. 
+      dockerfile: container/Dockerfile
+    container_name: TCEC_segmentation_pipeline
+    volumes:
+      - ../ROBEX:/workspace/ROBEX
+      - ../data/atlas:/workspace/data/atlas
+      - ../data/nnUNet_results:/workspace/data/nnUNet_results
+      - ../input:/workspace/input
+      - ../output:/workspace/output
+
+    working_dir: /workspace
+    
+    gpus: all
+    shm_size: "16g"
+    stdin_open: true
+    tty: true
+
+    environment:
+      - nnUNet_results=/workspace/data/nnUNet_results/
+
+    command: /bin/bash -c "chmod +x /workspace/run_pipeline.sh"

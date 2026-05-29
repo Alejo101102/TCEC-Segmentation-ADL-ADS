@@ -250,9 +250,24 @@ def run_nnunet(ants_dir, pred_dir, dataset_id, configuration):
         "-o", pred_dir,
         "-d", str(dataset_id), 
         "-c", configuration,
-        "-f", "all"
+        "-f", "all",
+        "-device", "cpu"
     ]
     run_cmd(cmd)
+
+def run_nnunet_evaluate(labels_dir, pred_dir, dataset_json, plans_json):
+    print("=== Running nnUNetv2_evaluate_folder ===")
+    print("\n This may take a long time")
+
+    cmd = [
+        "nnUNetv2_evaluate_folder",
+        labels_dir,   # ground truth
+        pred_dir,     # lo que generó la predicción
+        "-djfile", dataset_json,
+        "-pfile",  plans_json,
+    ]
+    run_cmd(cmd)
+
     
 
 """
@@ -303,18 +318,20 @@ nnUNet model configuration to use for segmentation: "3d_fullres".
 Returns:
 The function does not return any values; it executes the complete pipeline and generates results in the output directories.
 """
-def run_process(input_dir, atlas_path, out_root, dataset_id, config):
-    robex_dir   = f"{out_root}/ROBEX"
-    ants_dir    = f"{out_root}/ants"
+def run_process(input_dir, atlas_path, out_root, dataset_id, config, labels_dir, dataset_json, plans_json):
+    #robex_dir   = f"{out_root}/ROBEX"
+    #ants_dir    = f"{out_root}/ants"
     pred_dir    = f"{out_root}/predictions"
 
     print("=== PIPELINE STARTED ===")
 
-    run_robex(input_dir, robex_dir)
-    run_ants(robex_dir, ants_dir, atlas_path)
-    rename_after_ants(ants_dir)
-    cleanup_intermediate(ants_dir, keep_registered=True)
-    run_nnunet(ants_dir, pred_dir, dataset_id, config)
+    #run_robex(input_dir, robex_dir)
+    #run_ants(robex_dir, ants_dir, atlas_path)
+    #rename_after_ants(ants_dir)
+    #cleanup_intermediate(ants_dir, keep_registered=True)
+    #run_nnunet(ants_dir, pred_dir, dataset_id, config)
+    run_nnunet(input_dir, pred_dir, dataset_id, config) #para  imagenes con remocion y ya registradas
+    run_nnunet_evaluate(labels_dir, pred_dir, dataset_json, plans_json)
 
     print("\n=== PIPELINE SUCCESSFULLY COMPLETED ===")
 
@@ -329,14 +346,23 @@ def main():
     dataset_id = 15
     config     = "3d_fullres"
 
-    run_process(
-        input_dir   = input_dir,
-        atlas_path  = atlas_path,
-        out_root    = out_root,
-        dataset_id  = dataset_id,
-        config      = config
-    )
+    dataset_name = "Dataset015_TCEC"
+    plan_name    = "nnUNetTrainer__nnUNetPlans__3d_fullres"
 
+    labels_dir   = "/workspace/evaluation/labels_input"
+    dataset_json = f"/workspace/data/nnUNet_results/{dataset_name}/{plan_name}/dataset.json"
+    plans_json   = f"/workspace/data/nnUNet_results/{dataset_name}/{plan_name}/plans.json"
+
+    run_process(
+        input_dir    = input_dir,
+        atlas_path   = atlas_path,
+        out_root     = out_root,
+        dataset_id   = dataset_id,
+        config       = config,
+        labels_dir   = labels_dir,
+        dataset_json = dataset_json,
+        plans_json   = plans_json,
+    )
 
 if __name__ == "__main__":
     main()

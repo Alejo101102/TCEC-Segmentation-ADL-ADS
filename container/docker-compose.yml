@@ -7,18 +7,24 @@ services:
     volumes:
       - ../ROBEX:/workspace/ROBEX
       - ../data/atlas:/workspace/data/atlas
+      - ../data/nnUNet_preprocessed:/workspace/data/nnUNet_preprocessed
+      - ../data/nnUNet_raw:/workspace/data/nnUNet_raw
       - ../data/nnUNet_results:/workspace/data/nnUNet_results
       - ../input:/workspace/input
       - ../output:/workspace/output
+      - ../evaluation/labels_input:/workspace/evaluation/labels_input 
 
     working_dir: /workspace
     
-    gpus: all
+    #gpus: all
     shm_size: "16g"
     stdin_open: true
     tty: true
 
     environment:
       - nnUNet_results=/workspace/data/nnUNet_results/
-
+      - nnUNet_preprocessed=/workspace/data/nnUNet_preprocessed/
+      - nnUNet_raw=/workspace/data/nnUNet_raw/
+      - CUDA_VISIBLE_DEVICES=""
+      - nnUNet_use_gpu=False
     command: /bin/bash -c "chmod +x /workspace/run_pipeline.sh"

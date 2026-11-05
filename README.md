@@ -24,6 +24,29 @@ All processing is executed automatically when Docker starts.
 
 ---
 
+## Fine-tuning for small lesions (Alejandro Guerrero Cano, Universidad del Valle)
+
+This repository extends the TBI segmentation pipeline and model by Jenifer Castaño Ledesma
+([CastanoJenifer/TCEC-Segmentation](https://github.com/CastanoJenifer/TCEC-Segmentation)).
+Starting from her trained nnU-Net, the model was fine-tuned to improve the detection of small lesions
+(< 100 mm³) by changing the loss function and the patch sampling strategy:
+
+- **ADL v1**: patch-weighted Dice loss that gives more weight to patches with a smaller lesion fraction
+  (`AdaptiveDiceLoss` in `src/nnunetv2/training/loss/dice.py`).
+- **ADL v2**: volume-aware Dice loss (Chartrand et al., 2022), where each voxel is weighted by the volume
+  of the lesion it belongs to (`AdaptiveDiceLoss_v2` in `src/nnunetv2/training/loss/dice.py`).
+- **ADS**: volume-aware patch sampling, so that every lesion has the same probability of being sampled
+  regardless of its size (`src/nnunetv2/training/dataloading/data_loader.py`).
+- **Per-lesion evaluation**: detection rate by lesion size (small < 100 mm³, medium 100–1000 mm³,
+  large > 1000 mm³), Dice of detected lesions and false positives
+  (`src/nnunetv2/evaluation/evaluate_predictions.py`).
+
+The CE + ADL loss is defined in `src/nnunetv2/training/loss/compound_losses.py`, and the ADL v2 + ADS
+trainer in `src/nnunetv2/training/nnUNetTrainer/variants/sampling/nnUNetTrainer_ADL_v2_ADS.py`.
+The selected model was ADL v2 + ADS with an initial learning rate of 1e-3 (`fold_all`).
+
+---
+
 ## Instructions
 
 #### 1. Clone the repository.
@@ -37,7 +60,7 @@ git clone <this-repository>
 ```bash
 chmod +x ./ROBEX/ROBEX
 ```
-#### 5. Download the required files from [Drive](https://drive.google.com/drive/folders/1DaNsrBZot7z07-ihFZdEv-TGTAJxvvHS?usp=drive_link) Place them into the indicated folders inside the repository.
+#### 5. Request the required files. The model weights and the other files needed to run the pipeline are not included in this repository. To obtain them, contact Alejandro Guerrero Cano at alejandro.cano@correounivalle.edu.co, and place them into the indicated folders inside the repository.
 #### 6. Add your MRI scans. Make sure the images you want to process are located inside the input folder.
 #### 7. Install PyTorch following the official installation instructions (Conda or Pip).
 #### 8. Move into the container folder and run Docker.
@@ -68,3 +91,18 @@ F. Isensee, P. Kickingereder, et al., “nnU-Net: Self-adapting Framework for U-
 
 Intensity normalization
 J. C. Reinhold, B. E. Dewey, A. Carass, and J. L. Prince, “Evaluating the impact of intensity normalization on MR image synthesis,” Medical Imaging 2019: Image Processing, 10949, 2019.
+
+Base pipeline and model
+J. Castaño Ledesma, “Segmentación mediante Inteligencia Artificial para la detección de lesiones por Trauma Craneoencefálico Cerrado a través de Imágenes por Resonancia Magnética,” Trabajo de grado, Universidad del Valle, 2025. https://hdl.handle.net/10893/39426
+
+ADL v2 and ADS (volume-aware Dice loss and sampling)
+G. Chartrand, R. D. Emiliani, S. A. Pawlowski, et al., “Automated Detection of Brain Metastases on T1-Weighted MRI Using a Convolutional Neural Network: Impact of Volume Aware Loss and Sampling Strategy,” Journal of Magnetic Resonance Imaging, 56(6):1885–1898, 2022. https://doi.org/10.1002/jmri.28274
+
+ADL and ADS naming in nnU-Net
+Y. Yoo, E. Gibson, G. Zhao, et al., “Extended nnU-Net for Brain Metastasis Detection and Segmentation in Contrast-Enhanced Magnetic Resonance Imaging With a Large Multi-Institutional Data Set,” International Journal of Radiation Oncology, Biology, Physics, 121(1):241–249, 2025. https://doi.org/10.1016/j.ijrobp.2024.07.2318
+
+ADL v1 (weighting idea)
+C. H. Sudre, W. Li, T. Vercauteren, S. Ourselin, and M. J. Cardoso, “Generalised Dice Overlap as a Deep Learning Loss Function for Highly Unbalanced Segmentations,” in Deep Learning in Medical Image Analysis and Multimodal Learning for Clinical Decision Support (DLMIA/ML-CDS 2017), LNCS 10553, pp. 240–248, Springer, 2017. https://doi.org/10.1007/978-3-319-67558-9_28
+
+Dice loss 
+F. Milletari, N. Navab, and S.-A. Ahmadi, “V-Net: Fully Convolutional Neural Networks for Volumetric Medical Image Segmentation,” in 2016 Fourth International Conference on 3D Vision (3DV), IEEE, pp. 565–571, 2016. https://doi.org/10.1109/3DV.2016.79

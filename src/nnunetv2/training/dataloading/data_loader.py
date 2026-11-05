@@ -218,6 +218,106 @@ class nnUNetDataLoader(DataLoader):
         return {'data': data_all, 'target': seg_all, 'keys': selected_keys}
 
 
+class nnUNetDataLoader_ADS(nnUNetDataLoader):
+    """
+    Volume aware sampling (VAS) de Chartrand et al. (2022, J Magn Reson Imaging 56:1885-1898, ec. 6):
+
+                 (1 - p_bg) / n
+                 --------------,  si q pertenece a la lesión i
+        M(q) =       vol(i)
+                   p_bg
+                 -------,          en otro caso
+                 vol(bg)
+
+    Cada lesión (componente conectado del ground truth) tiene la misma probabilidad de ser el centro de un parche,
+    sin importar su tamaño; dentro de la lesión, el vóxel central se elige al azar. En nnU-Net estándar el centro se
+    elige entre los vóxeles de lesión, así que las lesiones grandes salen mucho más seguido.
+
+    Solo cambian los parches con lesión forzada (force_fg). Los demás siguen siendo recortes al azar, que hacen el
+    papel de p_bg: con batch 2 y oversample_foreground_percent 0.33, nnU-Net fuerza lesión en 1 de los 2 parches,
+    es decir p_bg = 0.5, el mismo valor que usa Chartrand.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Coordenadas de los vóxeles de cada lesión, por caso (se calculan una vez por caso y proceso)
+        self._lesions_per_case = {}
+
+    def _get_lesions(self, identifier: str, seg: np.ndarray) -> List[np.ndarray]:
+        if identifier not in self._lesions_per_case:
+            from scipy.ndimage import label as cc_label
+            # Conectividad 26, la misma de AdaptiveDiceLoss_v2 y evaluate_predictions.py. seg = -1 marca fuera del
+            # cerebro, así que la lesión es seg > 0
+            structure = np.ones((3,) * (seg.ndim - 1), dtype=bool)
+            labeled, n = cc_label(seg[0] > 0, structure=structure)
+            if n == 0:
+                lesions = []
+            else:
+                coords = np.argwhere(labeled > 0)
+                labels = labeled[tuple(coords.T)]
+                order = np.argsort(labels, kind='stable')
+                lesions = np.split(coords[order], np.cumsum(np.bincount(labels)[1:])[:-1])
+            self._lesions_per_case[identifier] = lesions
+        return self._lesions_per_case[identifier]
+
+    def generate_train_batch(self):
+        selected_keys = self.get_indices()
+        # preallocate memory for data and seg
+        data_all = np.zeros(self.data_shape, dtype=np.float32)
+        seg_all = np.zeros(self.seg_shape, dtype=np.int16)
+
+        for j, i in enumerate(selected_keys):
+            force_fg = self.get_do_oversample(j)
+
+            data, seg, seg_prev, properties = self._data.load_case(i)
+            shape = data.shape[1:]
+
+            class_locations = properties['class_locations']
+            if force_fg:
+                lesions = self._get_lesions(i, seg)
+                if len(lesions) > 0:
+                    # VAS: primero una lesión al azar (todas con la misma probabilidad), luego un vóxel al azar de
+                    # ella. Se le pasa a get_bbox como única ubicación posible para reutilizar su manejo de bordes
+                    lesion = lesions[np.random.choice(len(lesions))]
+                    voxel = lesion[np.random.choice(len(lesion))]
+                    class_locations = {'ads': np.concatenate(([0], voxel))[None]}
+
+            bbox_lbs, bbox_ubs = self.get_bbox(shape, force_fg, class_locations)
+            bbox = [[i, j] for i, j in zip(bbox_lbs, bbox_ubs)]
+
+            data_all[j] = crop_and_pad_nd(data, bbox, 0)
+
+            seg_cropped = crop_and_pad_nd(seg, bbox, -1)
+            if seg_prev is not None:
+                seg_cropped = np.vstack((seg_cropped, crop_and_pad_nd(seg_prev, bbox, -1)[None]))
+            seg_all[j] = seg_cropped
+
+        if self.patch_size_was_2d:
+            data_all = data_all[:, :, 0]
+            seg_all = seg_all[:, :, 0]
+
+        if self.transforms is not None:
+            with torch.no_grad():
+                with threadpool_limits(limits=1, user_api=None):
+                    data_all = torch.from_numpy(data_all).float()
+                    seg_all = torch.from_numpy(seg_all).to(torch.int16)
+                    images = []
+                    segs = []
+                    for b in range(self.batch_size):
+                        tmp = self.transforms(**{'image': data_all[b], 'segmentation': seg_all[b]})
+                        images.append(tmp['image'])
+                        segs.append(tmp['segmentation'])
+                    data_all = torch.stack(images)
+                    if isinstance(segs[0], list):
+                        seg_all = [torch.stack([s[i] for s in segs]) for i in range(len(segs[0]))]
+                    else:
+                        seg_all = torch.stack(segs)
+                    del segs, images
+            return {'data': data_all, 'target': seg_all, 'keys': selected_keys}
+
+        return {'data': data_all, 'target': seg_all, 'keys': selected_keys}
+
+
 if __name__ == '__main__':
     folder = join(nnUNet_preprocessed, 'Dataset002_Heart', 'nnUNetPlans_3d_fullres')
     ds = nnUNetDatasetBlosc2(folder)  # this should not load the properties!

@@ -9,7 +9,7 @@
     "numTraining": 230,
     "file_ending": ".nii.gz",
     "licence": "CC-BY 4.0 (example)",
-    "converted_by": "Castano Jenifer",
+    "converted_by": "Guerrero Alejandro",
     "name": "Dataset015_TCEC",
     "description": "T1-weighted MRI with lesion segmentation (TCEC dataset) with SRI24"
 }

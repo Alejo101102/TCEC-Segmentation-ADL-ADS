@@ -118,8 +118,8 @@ def compute_lesion_metrics_single(mask_ref: np.ndarray,
     tn = int(np.sum(~mask_ref & ~mask_pred))
 
     if tp + fp + fn == 0:
-        dice = float('nan')
-        iou  = float('nan')
+        dice = 0.0
+        iou  = 0.0
     else:
         dice = 2 * tp / (2 * tp + fp + fn)
         iou  = tp / (tp + fp + fn)
@@ -171,8 +171,10 @@ def compute_metrics_per_lesion(reference_file: str,
         # ── Métricas globales por imagen (igual que el original) ─────────────
         tp_g, fp_g, fn_g, tn_g = compute_tp_fp_fn_tn(mask_ref_global, mask_pred_global)
         if tp_g + fp_g + fn_g == 0:
+            # Sin lesión en la referencia ni en la predicción (control bien clasificado):
+            # 1.0, como en AIMS-TBI y en la evaluación de Castaño Ledesma
             results['metrics'][r] = {
-                'Dice': float('nan'), 'IoU': float('nan'),
+                'Dice': 1.0, 'IoU': 1.0,
                 'TP': int(tp_g), 'FP': int(fp_g),
                 'FN': int(fn_g), 'TN': int(tn_g),
                 'n_pred': int(fp_g + tp_g), 'n_ref': int(fn_g + tp_g),
@@ -186,6 +188,7 @@ def compute_metrics_per_lesion(reference_file: str,
                 'n_pred': int(fp_g + tp_g), 'n_ref': int(fn_g + tp_g),
             }
 
+        # ── Componentes conectados ───────────────────────────────────────────
         struct = np.ones((3,) * seg_ref.ndim, dtype=bool)
 
         labeled_ref,  n_ref  = cc_label(mask_ref_global,  structure=struct)
@@ -195,6 +198,7 @@ def compute_metrics_per_lesion(reference_file: str,
         matched_pred_ids = set()
         lesion_id        = 0
 
+        # ── Matching: cada lesión GT busca su mejor predicción ───────────────
         for ref_id in range(1, n_ref + 1):
             lesion_id    += 1
             ref_component = labeled_ref == ref_id
@@ -246,6 +250,7 @@ def compute_metrics_per_lesion(reference_file: str,
 
             per_lesion.append(m)
 
+        # ── Predicciones sin match → False Positive ──────────────────────────
         for pred_id in range(1, n_pred + 1):
             if pred_id in matched_pred_ids:
                 continue
@@ -267,20 +272,29 @@ def compute_metrics_per_lesion(reference_file: str,
             })
             per_lesion.append(m)
 
-        n_matched = len(matched_pred_ids)
+        # ── Resumen por imagen ───────────────────────────────────────────────
+        # n_matched cuenta lesiones de referencia detectadas (una predicción puede cubrir varias);
+        # n_matched_pred cuenta predicciones emparejadas, y es la que define los FP
+        n_matched      = sum(1 for l in per_lesion if l['lesion_type'] == 'matched')
+        n_matched_pred = len(matched_pred_ids)
         results['lesion_metrics'][r] = {
             'n_ref_lesions':         n_ref,
             'n_pred_lesions':        n_pred,
             'n_matched':             n_matched,
+            'n_matched_pred':        n_matched_pred,
             'n_false_negative':      n_ref  - n_matched,
-            'n_false_positive':      n_pred - n_matched,
-            'lesion_detection_rate': (n_matched / n_ref  if n_ref  > 0 else float('nan')),
-            'lesion_fp_rate':        ((n_pred - n_matched) / n_pred if n_pred > 0 else float('nan')),
+            'n_false_positive':      n_pred - n_matched_pred,
+            'lesion_detection_rate': (n_matched / n_ref  if n_ref  > 0 else 0.0),
+            'lesion_fp_rate':        ((n_pred - n_matched_pred) / n_pred if n_pred > 0 else 0.0),
             'per_lesion':            per_lesion,
         }
 
     return results
 
+
+# ---------------------------------------------------------------------------
+# Evaluación sobre carpetas completas
+# ---------------------------------------------------------------------------
 
 def compute_metrics_on_folder_per_lesion(
         folder_ref: str,
@@ -293,7 +307,6 @@ def compute_metrics_on_folder_per_lesion(
         num_processes: int = default_num_processes,
         iou_threshold: float = 0.1,
         chill: bool = True) -> dict:
-    
     if output_file is not None:
         assert output_file.endswith('.json'), 'output_file debe terminar en .json'
 
@@ -319,6 +332,7 @@ def compute_metrics_on_folder_per_lesion(
             ))
         )
 
+    # ── mean y foreground_mean (igual que el original) ───────────────────────
     metric_list = list(results[0]['metrics'][regions_or_labels[0]].keys())
 
     means = {}
@@ -330,8 +344,9 @@ def compute_metrics_on_folder_per_lesion(
     foreground_mean = {}
     for m in metric_list:
         values = [means[k][m] for k in means if k not in (0, '0')]
-        foreground_mean[m] = float(np.nanmean(values)) if values else float('nan')
+        foreground_mean[m] = float(np.nanmean(values)) if values else 0.0
 
+    # ── lesion_summary ───────────────────────────────────────────────────────
     size_categories = ['small', 'medium', 'large']
     size_ranges     = {'small': '<100 mm3', 'medium': '100-1000 mm3', 'large': '>1000 mm3'}
 
@@ -383,12 +398,9 @@ def compute_metrics_on_folder_per_lesion(
                 'n_matched':             n_matched,
                 'n_false_negative':      d['n_false_negative'],
                 'n_false_positive':      d['n_false_positive'],
-                'lesion_detection_rate': (n_matched / n_ref
-                                          if n_ref > 0 else float('nan')),
-                'mean_Dice_matched':     (float(np.nanmean(dice_list))
-                                          if dice_list else float('nan')),
-                'std_Dice_matched':      (float(np.nanstd(dice_list))
-                                          if dice_list else float('nan')),
+                'lesion_detection_rate': (n_matched / n_ref if n_ref > 0 else 0.0),
+                'mean_Dice_matched':     (float(np.nanmean(dice_list)) if dice_list else 0.0),
+                'std_Dice_matched':      (float(np.nanstd(dice_list))  if dice_list else 0.0),
             }
 
         lesion_summary[label_or_region_to_key(r)] = {
@@ -397,15 +409,13 @@ def compute_metrics_on_folder_per_lesion(
             'total_matched':             total_matched,
             'total_false_negatives':     total_fn,
             'total_false_positives':     total_fp,
-            'lesion_detection_rate':     (total_matched / total_ref
-                                          if total_ref > 0 else float('nan')),
-            'mean_Dice_matched_lesions': (float(np.nanmean(all_matched_dice))
-                                          if all_matched_dice else float('nan')),
-            'std_Dice_matched_lesions':  (float(np.nanstd(all_matched_dice))
-                                          if all_matched_dice else float('nan')),
+            'lesion_detection_rate':     (total_matched / total_ref if total_ref > 0 else 0.0),
+            'mean_Dice_matched_lesions': (float(np.nanmean(all_matched_dice)) if all_matched_dice else 0.0),
+            'std_Dice_matched_lesions':  (float(np.nanstd(all_matched_dice))  if all_matched_dice else 0.0),
             'by_size_category':          by_size_summary,
         }
 
+    # ── Serialización ────────────────────────────────────────────────────────
     [recursive_fix_for_json_export(i) for i in results]
     recursive_fix_for_json_export(means)
     recursive_fix_for_json_export(foreground_mean)
@@ -433,28 +443,28 @@ def compute_metrics_on_folder_per_lesion(
 
     return result
 
-def compute_metrics_on_folder(
-        folder_ref: str,
-        folder_pred: str,
-        output_file: str,
-        image_reader_writer,
-        file_ending: str,
-        regions_or_labels,
-        ignore_label: int = None,
-        num_processes: int = default_num_processes,
-        chill: bool = True):
 
-    return compute_metrics_on_folder_per_lesion(
-        folder_ref=folder_ref,
-        folder_pred=folder_pred,
-        output_file=output_file,
-        image_reader_writer=image_reader_writer,
-        file_ending=file_ending,
-        regions_or_labels=regions_or_labels,
-        ignore_label=ignore_label,
-        num_processes=num_processes,
-        chill=chill
+def compute_metrics_on_folder(folder_ref: str, folder_pred: str,
+                               output_file: str,
+                               image_reader_writer,
+                               file_ending: str,
+                               regions_or_labels,
+                               ignore_label=None,
+                               chill: bool = False,
+                               num_processes: int = default_num_processes):
+    compute_metrics_on_folder_per_lesion(
+        folder_ref, folder_pred, output_file,
+        image_reader_writer, file_ending,
+        regions_or_labels, ignore_label,
+        num_processes, chill=chill
     )
+    if isfile(output_file):
+        return load_summary_json(output_file)
+    return {'foreground_mean': {'Dice': 0.0}}
+
+# ---------------------------------------------------------------------------
+# Entry points (compatibilidad con el original)
+# ---------------------------------------------------------------------------
 
 
 def compute_metrics_on_folder2(folder_ref: str, folder_pred: str, dataset_json_file: str, plans_file: str,
@@ -521,10 +531,14 @@ def evaluate_simple_entry_point():
                                      args.o, args.np, args.il, chill=args.chill)
 
 
+# ---------------------------------------------------------------------------
+# Bloque __main__
+# ---------------------------------------------------------------------------
+
 if __name__ == '__main__':
-    folder_ref  = '/home/castanojenifer/Codigos/labelsTs'
-    folder_pred = '/home/castanojenifer/Codigos/output_SRI24'
-    output_file = '/home/castanojenifer/Codigos/output_SRI24/summary_per_lesion.json'
+    folder_ref  = '/ruta/a/labelsTs'
+    folder_pred = '/ruta/a/predicciones'
+    output_file = '/ruta/a/predicciones/summary_per_lesion.json'
 
     gt_files   = os.listdir(folder_ref)
     pred_files = os.listdir(folder_pred)

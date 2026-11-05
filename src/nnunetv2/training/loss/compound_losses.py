@@ -1,5 +1,5 @@
 import torch
-from nnunetv2.training.loss.dice import SoftDiceLoss, MemoryEfficientSoftDiceLoss
+from nnunetv2.training.loss.dice import SoftDiceLoss, MemoryEfficientSoftDiceLoss, AdaptiveDiceLoss, AdaptiveDiceLoss_v2
 from nnunetv2.training.loss.robust_ce_loss import RobustCrossEntropyLoss, TopKLoss
 from nnunetv2.utilities.helpers import softmax_helper_dim1
 from torch import nn
@@ -154,3 +154,14 @@ class DC_and_topk_loss(nn.Module):
 
         result = self.weight_ce * ce_loss + self.weight_dice * dc_loss
         return result
+
+class DC_and_ADL_loss(DC_and_CE_loss):
+
+    def __init__(self, soft_dice_kwargs, ce_kwargs, weight_ce=1, weight_dice=1, ignore_label=None):
+        super().__init__(
+            soft_dice_kwargs, ce_kwargs,
+            weight_ce=weight_ce,
+            weight_dice=weight_dice,
+            ignore_label=ignore_label,
+            dice_class=AdaptiveDiceLoss
+        )

@@ -45,6 +45,35 @@ The CE + ADL loss is defined in `src/nnunetv2/training/loss/compound_losses.py`,
 trainer in `src/nnunetv2/training/nnUNetTrainer/variants/sampling/nnUNetTrainer_ADL_v2_ADS.py`.
 The selected model was ADL v2 + ADS with an initial learning rate of 1e-3 (`fold_all`).
 
+> **Note:** the fine-tuning used an initial learning rate of 1e-3. The trainer keeps nnU-Net's default of 1e-2,
+> so set it before training with `export nnUNet_initial_lr=1e-3` (the number of epochs can be set the same way
+> with `nnUNet_num_epochs`, 200 by default).
+
+---
+
+## Repository structure
+
+```
+TCEC-Segmentation/
+├── container/                  ← Docker configuration (Dockerfile, docker-compose.yml)
+├── data/
+│   ├── atlas/                  ← place SRI24_atlas.nii here
+│   └── nnUNet_results/
+│       └── Dataset015_TCEC/
+│           └── nnUNetTrainer__nnUNetPlans__3d_fullres/
+│               ├── dataset.json
+│               ├── dataset_fingerprint.json
+│               ├── plans.json
+│               └── fold_all/   ← place checkpoint_final.pth here
+├── input/                      ← T1 images to process
+├── output/                     ← results are saved here
+├── ROBEX/                      ← place the downloaded ROBEX folder here
+├── src/nnunetv2/               ← nnU-Net with the ADL v1, ADL v2 and ADS modifications
+├── pipeline.py                 ← processing workflow
+├── run_pipeline.sh
+└── requirements.txt
+```
+
 ---
 
 ## Instructions
@@ -60,7 +89,7 @@ git clone <this-repository>
 ```bash
 chmod +x ./ROBEX/ROBEX
 ```
-#### 5. Request the required files. The model weights and the other files needed to run the pipeline are not included in this repository. To obtain them, contact Alejandro Guerrero Cano at alejandro.cano@correounivalle.edu.co, and place them into the indicated folders inside the repository.
+#### 5. Request the required files. The model weights and the other files needed to run the pipeline are not included in this repository. To obtain them, contact Alejandro Guerrero Cano at alejandro.cano@correounivalle.edu.co. Place `checkpoint_final.pth` in `data/nnUNet_results/Dataset015_TCEC/nnUNetTrainer__nnUNetPlans__3d_fullres/fold_all/` and `SRI24_atlas.nii` in `data/atlas/` (see [Repository structure](#repository-structure)).
 #### 6. Add your MRI scans. Make sure the images you want to process are located inside the input folder.
 #### 7. Install PyTorch following the official installation instructions (Conda or Pip).
 #### 8. Move into the container folder and run Docker.

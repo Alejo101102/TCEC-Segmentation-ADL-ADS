@@ -58,6 +58,8 @@ TCEC-Segmentation/
 ├── container/                  ← Docker configuration (Dockerfile, docker-compose.yml)
 ├── data/
 │   ├── atlas/                  ← place SRI24_atlas.nii here
+│   ├── nnUNet_raw/             ← training data (only for training, not included)
+│   ├── nnUNet_preprocessed/    ← created by nnU-Net preprocessing (only for training, not included)
 │   └── nnUNet_results/
 │       └── Dataset015_TCEC/
 │           └── nnUNetTrainer__nnUNetPlans__3d_fullres/
@@ -65,8 +67,10 @@ TCEC-Segmentation/
 │               ├── dataset_fingerprint.json
 │               ├── plans.json
 │               └── fold_all/   ← place checkpoint_final.pth here
-├── input/                      ← T1 images to process
-├── output/                     ← results are saved here
+├── evaluation/
+│   └── labels_input/           ← reference masks (only for evaluation)
+├── input/                      ← raw T1 images to process
+├── output/                     ← ROBEX/, ants/ (registered images) and predictions/
 ├── ROBEX/                      ← place the downloaded ROBEX folder here
 ├── src/nnunetv2/               ← nnU-Net with the ADL v1, ADL v2 and ADS modifications
 ├── pipeline.py                 ← processing workflow
@@ -90,8 +94,13 @@ git clone <this-repository>
 chmod +x ./ROBEX/ROBEX
 ```
 #### 5. Request the required files. The model weights and the other files needed to run the pipeline are not included in this repository. To obtain them, contact Alejandro Guerrero Cano at alejandro.cano@correounivalle.edu.co. Place `checkpoint_final.pth` in `data/nnUNet_results/Dataset015_TCEC/nnUNetTrainer__nnUNetPlans__3d_fullres/fold_all/` and `SRI24_atlas.nii` in `data/atlas/` (see [Repository structure](#repository-structure)).
-#### 6. Add your MRI scans. Make sure the images you want to process are located inside the input folder.
-#### 7. Install PyTorch following the official installation instructions (Conda or Pip).
+#### 6. Add your MRI scans. Place the raw T1 images in `input/` in `.nii.gz` format, named `TCEC_XXXX.nii.gz`, where `XXXX` is the case number (e.g. `TCEC_0001.nii.gz`). Do not add the `_0000` suffix: the pipeline adds it after the registration, as required by nnU-Net. The pipeline skull-strips the images (ROBEX), registers them to SRI24 (ANTs) and segments them; the predicted masks are saved in `output/predictions/` as `TCEC_XXXX.nii.gz`. If you want to evaluate the results, the reference masks must also be named `TCEC_XXXX.nii.gz`, with the same case number as their image and without `_0000` (e.g. the mask of `TCEC_0001.nii.gz` is also `TCEC_0001.nii.gz`), and placed in `evaluation/labels_input/` (see [Optional: evaluation against reference masks](#optional-evaluation-against-reference-masks)).
+
+> **Note:** if nnU-Net does not find the images, or if the images are already skull-stripped and registered to SRI24
+> and are sent directly to nnU-Net (`nnUNetv2_predict`) without ROBEX and ANTs, name them `TCEC_XXXX_0000.nii.gz`
+> (e.g. `TCEC_0016_0000.nii.gz`), as required by nnU-Net. The `_0000` suffix only goes in the image name; the
+> reference masks keep the name `TCEC_XXXX.nii.gz` (e.g. `TCEC_0016.nii.gz`).
+#### 7. Install PyTorch following the official installation instructions (Conda or Pip). The container uses the GPU (`gpus: all` in `docker-compose.yml`), so an NVIDIA GPU and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) are required.
 #### 8. Move into the container folder and run Docker.
 ```bash
 cd container
@@ -106,6 +115,22 @@ pipeline.py
 #### No manual commands are needed inside the container.
 #### All preprocessing and segmentation is automatic.
 #### Results are saved automatically in the output directory.
+
+#### Optional: evaluation against reference masks
+`pipeline.py` does not evaluate the predictions. To compare them with reference masks, place the masks in
+`evaluation/labels_input/` with the same name as the prediction (`TCEC_XXXX.nii.gz`, without `_0000`) and run:
+```bash
+nnUNetv2_evaluate_folder /workspace/evaluation/labels_input /workspace/output/predictions \
+    -djfile /workspace/data/nnUNet_results/Dataset015_TCEC/nnUNetTrainer__nnUNetPlans__3d_fullres/dataset.json \
+    -pfile /workspace/data/nnUNet_results/Dataset015_TCEC/nnUNetTrainer__nnUNetPlans__3d_fullres/plans.json \
+    -o /workspace/output/predictions/summary_per_lesion.json
+```
+The `evaluation/labels_input/` folder is not mounted by default. To evaluate inside the container, add this line
+to the `volumes` section of `container/docker-compose.yml`:
+```yaml
+      - ../evaluation/labels_input:/workspace/evaluation/labels_input
+```
+The result, `summary_per_lesion.json`, includes the global metrics and the per-lesion detection by size.
 
 # References
 

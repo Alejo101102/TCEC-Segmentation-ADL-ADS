@@ -45,9 +45,9 @@ The CE + ADL loss is defined in `src/nnunetv2/training/loss/compound_losses.py`,
 trainer in `src/nnunetv2/training/nnUNetTrainer/variants/sampling/nnUNetTrainer_ADL_v2_ADS.py`.
 The selected model was ADL v2 + ADS with an initial learning rate of 1e-3 (`fold_all`).
 
-> **Note:** the fine-tuning used an initial learning rate of 1e-3. The trainer keeps nnU-Net's default of 1e-2,
-> so set it before training with `export nnUNet_initial_lr=1e-3` (the number of epochs can be set the same way
-> with `nnUNet_num_epochs`, 200 by default).
+> **Note:** the fine-tuning used an initial learning rate of 1e-3, while the trainer keeps nnU-Net's default of 1e-2.
+> The learning rate is read from the `nnUNet_initial_lr` environment variable and the number of epochs from
+> `nnUNet_num_epochs` (200 by default).
 
 ---
 
@@ -94,7 +94,7 @@ git clone <this-repository>
 chmod +x ./ROBEX/ROBEX
 ```
 #### 5. Request the required files. The model weights and the other files needed to run the pipeline are not included in this repository. To obtain them, contact Alejandro Guerrero Cano at alejandro.cano@correounivalle.edu.co. Place `checkpoint_final.pth` in `data/nnUNet_results/Dataset015_TCEC/nnUNetTrainer__nnUNetPlans__3d_fullres/fold_all/` and `SRI24_atlas.nii` in `data/atlas/` (see [Repository structure](#repository-structure)).
-#### 6. Add your MRI scans. Place the raw T1 images in `input/` in `.nii.gz` format, named `TCEC_XXXX.nii.gz`, where `XXXX` is the case number (e.g. `TCEC_0001.nii.gz`). Do not add the `_0000` suffix: the pipeline adds it after the registration, as required by nnU-Net. The pipeline skull-strips the images (ROBEX), registers them to SRI24 (ANTs) and segments them; the predicted masks are saved in `output/predictions/` as `TCEC_XXXX.nii.gz`. If you want to evaluate the results, the reference masks must also be named `TCEC_XXXX.nii.gz`, with the same case number as their image and without `_0000` (e.g. the mask of `TCEC_0001.nii.gz` is also `TCEC_0001.nii.gz`), and placed in `evaluation/labels_input/` (see [Optional: evaluation against reference masks](#optional-evaluation-against-reference-masks)).
+#### 6. Add your MRI scans. Place the raw T1 images in `input/` in `.nii.gz` format, named `TCEC_XXXX.nii.gz`, where `XXXX` is the case number (e.g. `TCEC_0001.nii.gz`). Do not add the `_0000` suffix: the pipeline adds it after the registration, as required by nnU-Net. The pipeline skull-strips the images (ROBEX), registers them to SRI24 (ANTs) and segments them; the predicted masks are saved in `output/predictions/` as `TCEC_XXXX.nii.gz`. If you want to evaluate the results, the reference masks must also be named `TCEC_XXXX.nii.gz`, with the same case number as their image and without `_0000` (e.g. the mask of `TCEC_0001.nii.gz` is also `TCEC_0001.nii.gz`), and placed in `evaluation/labels_input/`
 
 > **Note:** if nnU-Net does not find the images, or if the images are already skull-stripped and registered to SRI24
 > and are sent directly to nnU-Net (`nnUNetv2_predict`) without ROBEX and ANTs, name them `TCEC_XXXX_0000.nii.gz`
@@ -110,27 +110,6 @@ Once the Docker container is running, the entire pipeline executes automatically
 ```bash
 pipeline.py
 ```
-
-## Usage Notes
-#### No manual commands are needed inside the container.
-#### All preprocessing and segmentation is automatic.
-#### Results are saved automatically in the output directory.
-
-#### Optional: evaluation against reference masks
-`pipeline.py` does not evaluate the predictions. To compare them with reference masks, place the masks in
-`evaluation/labels_input/` with the same name as the prediction (`TCEC_XXXX.nii.gz`, without `_0000`) and run:
-```bash
-nnUNetv2_evaluate_folder /workspace/evaluation/labels_input /workspace/output/predictions \
-    -djfile /workspace/data/nnUNet_results/Dataset015_TCEC/nnUNetTrainer__nnUNetPlans__3d_fullres/dataset.json \
-    -pfile /workspace/data/nnUNet_results/Dataset015_TCEC/nnUNetTrainer__nnUNetPlans__3d_fullres/plans.json \
-    -o /workspace/output/predictions/summary_per_lesion.json
-```
-The `evaluation/labels_input/` folder is not mounted by default. To evaluate inside the container, add this line
-to the `volumes` section of `container/docker-compose.yml`:
-```yaml
-      - ../evaluation/labels_input:/workspace/evaluation/labels_input
-```
-The result, `summary_per_lesion.json`, includes the global metrics and the per-lesion detection by size.
 
 # References
 
